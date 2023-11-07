@@ -87,7 +87,7 @@ def get_api_answer(timestamp):
                          f'Статус ответа {status}.')
             raise requests.HTTPError(f'Статус ответа {status}.')
     return response.json()
- 
+
 
 def check_response(response):
     """Проверяет ответ API на соответствие документации."""
@@ -128,7 +128,7 @@ def parse_status(homework):
     except KeyError as error:
         logger.error(error)
         raise KeyError(error)
-    
+
     verdict = HOMEWORK_VERDICTS.get(homework_status)
     if verdict is None:
         logger.error(f'Недокументированный статус домашки: {homework_status}.')
@@ -151,7 +151,7 @@ def main():
         try:
             response = get_api_answer(timestamp)
             check_response(response)
-            if len(response['homeworks']) >0:
+            if len(response['homeworks']) > 0:
                 homework = response['homeworks'][0]
                 message = parse_status(homework)
                 if message != last_message:
