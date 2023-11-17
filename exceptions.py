@@ -1,11 +1,11 @@
-class CustomRequestException(Exception):
+class HTTPConnectionError(Exception):
     ...
 
-class CustomMessageException(Exception):
+class SendTelegramMessageError(Exception):
     ...
 
-class CustomHTTPException(Exception):
+class IncorrectResponseCode(Exception):
     ...
 
-class CustomJSONDecodeError(Exception):
+class HTTPResponseParsingError(Exception):
     ...

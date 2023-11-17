@@ -8,8 +8,8 @@ import requests
 import telegram
 from dotenv import load_dotenv
 
-from exceptions import (CustomHTTPException, CustomJSONDecodeError,
-                        CustomMessageException, CustomRequestException)
+from exceptions import (HTTPConnectionError, HTTPResponseParsingError,
+                        IncorrectResponseCode, SendTelegramMessageError)
 
 load_dotenv()
 
@@ -44,7 +44,7 @@ def check_tokens() -> None:
     logger.info('Проверка доступности переменных окружения.')
     tokens = [PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]
     if not all(tokens):
-        raise KeyError('Отсутствует переменная окружения.')
+        return False
     logger.info('Проверка успешно пройдена.')
 
 
@@ -54,7 +54,7 @@ def send_message(bot: telegram.Bot, message: str) -> telegram.Message:
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
     except telegram.error.TelegramError as error:
-        raise CustomMessageException(error)
+        raise SendTelegramMessageError(error)
     else:
         logger.debug('Сообщение успешно отправлено.')
 
@@ -71,15 +71,17 @@ def get_api_answer(timestamp: int) -> dict:
     try:
         response = requests.get(**params)
     except requests.RequestException as error:
-        raise CustomRequestException(f'Эндпоинт API недоступен: {error}. '
-                                     f'url запроса: {ENDPOINT}. '
-                                     f'Заголовок: {HEADERS}.')
+        raise HTTPConnectionError(f'Эндпоинт API недоступен: {error}. '
+                                  f'url запроса: {ENDPOINT}. '
+                                  f'Заголовок: {HEADERS}.')
     else:
         if response.status_code != HTTPStatus.OK:
             logger.debug(f'Ошибка при запросе к эндпоинту. '
                          f'Ответ API: {response.text}. '
                          f'Статус ответа {response.status_code}.')
-            raise CustomHTTPException(f'Статус ответа {response.status_code}.')
+            raise IncorrectResponseCode(
+                f'Статус ответа {response.status_code}.'
+            )
     finally:
         logger.info(f'Эндпоинт API доступен. '
                     f'Ответ API: {response.text}. '
@@ -88,7 +90,7 @@ def get_api_answer(timestamp: int) -> dict:
     try:
         response = response.json()
     except requests.JSONDecodeError as error:
-        raise CustomJSONDecodeError(error)
+        raise HTTPResponseParsingError(error)
     else:
         return response
 
@@ -127,62 +129,35 @@ def parse_status(homework: dict) -> str:
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
-def main() -> None:  # noqa: C901
+def main() -> None:
     """Основная логика работы бота."""
+    if check_tokens() is False:
+        logger.critical('Отсутствуют необходимые переменные окружения.')
+        sys.exit(1)
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
-
     last_message = ''
-
-    try:
-        check_tokens()
-    except KeyError as error:
-        logger.critical(
-            f'Отсутствуют необходимые переменные окружения. {error}'
-        )
-        sys.exit(1)
 
     while True:
         try:
-            try:
-                response = get_api_answer(timestamp)
-            except CustomRequestException as error:
-                logger.error(error)
-            except CustomHTTPException as error:
-                logger.error(error)
-            except CustomJSONDecodeError as error:
-                logger.error(error)
-
-            try:
-                homework = check_response(response)
-            except TypeError as error:
-                logger.error(error)
-            except KeyError as error:
-                logger.error(error)
-
+            response = get_api_answer(timestamp)
+            homework = check_response(response)
             if len(response['homeworks']) > 0:
                 homework = response['homeworks'][0]
-                try:
-                    message = parse_status(homework)
-                except KeyError as error:
-                    logger.error(error)
-                except ValueError as error:
-                    logger.error(error)
+                message = parse_status(homework)
                 if message != last_message:
-                    try:
-                        send_message(bot, message)
-                    except CustomMessageException as error:
-                        logger.error(
-                            f'Ошибка при отправке сообщения: {error}.'
-                        )
+                    send_message(bot, message)
                     last_message = message
                     timestamp = int(time.time())
             else:
                 logger.debug('Отсутствие нового статуса.')
-
-        except Exception as error:
+        except (
+            HTTPConnectionError, IncorrectResponseCode,
+            HTTPResponseParsingError, TypeError, KeyError,
+            ValueError, SendTelegramMessageError
+        ) as error:
             message = f'Сбой в работе программы: {error}'
-            logger.error(error)
+            logger.exception(error)
             if message != last_message:
                 send_message(bot, message)
             last_message = message
