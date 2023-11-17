@@ -39,13 +39,13 @@ formatter = logging.Formatter(
 handler.setFormatter(formatter)
 
 
-def check_tokens() -> None:
+def check_tokens() -> bool:
     """Проверка доступности необходимых переменных окружения."""
     logger.info('Проверка доступности переменных окружения.')
     tokens = [PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]
-    if not all(tokens):
-        return False
-    logger.info('Проверка успешно пройдена.')
+    if all(tokens):
+        logger.info('Проверка успешно пройдена.')
+    return all(tokens)
 
 
 def send_message(bot: telegram.Bot, message: str) -> telegram.Message:
@@ -100,12 +100,11 @@ def check_response(response: dict) -> list:
     logger.info('Проверка ответа API на соответствие документации.')
     if not isinstance(response, dict):
         raise TypeError('Неверный тип данных у элемента response.')
-    elif 'homeworks' not in response:
+    if 'homeworks' not in response:
         raise KeyError('Ожидаемый ключ отсутствует в ответе API.')
-    elif not isinstance(response["homeworks"], list):
+    if not isinstance(response["homeworks"], list):
         raise TypeError('Неверный тип данных у элемента homeworks.')
-    else:
-        logger.info('Ожидаемые ключи присутствуют в ответе API.')
+    logger.info('Ожидаемые ключи присутствуют в ответе API.')
     return response["homeworks"]
 
 
@@ -114,12 +113,11 @@ def parse_status(homework: dict) -> str:
     logger.info('Попытка извлечь статус проверки работы.')
     if 'status' not in homework:
         raise KeyError('У домашки нет статуса.')
-    elif 'homework_name' not in homework:
+    if 'homework_name' not in homework:
         raise KeyError('Домашка не найдена.')
-    else:
-        homework_name = homework['homework_name']
-        homework_status = homework['status']
-        logger.info('Домашка найдена, у неё есть статус.')
+    homework_name = homework['homework_name']
+    homework_status = homework['status']
+    logger.info('Домашка найдена, у неё есть статус.')
 
     verdict = HOMEWORK_VERDICTS.get(homework_status)
     if verdict is None:
@@ -129,9 +127,9 @@ def parse_status(homework: dict) -> str:
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
-def main() -> None:
+def main() -> None:  # noqa: C901
     """Основная логика работы бота."""
-    if check_tokens() is False:
+    if not check_tokens():
         logger.critical('Отсутствуют необходимые переменные окружения.')
         sys.exit(1)
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
@@ -146,7 +144,10 @@ def main() -> None:
                 homework = response['homeworks'][0]
                 message = parse_status(homework)
                 if message != last_message:
-                    send_message(bot, message)
+                    try:
+                        send_message(bot, message)
+                    except SendTelegramMessageError as error:
+                        logger.exception(error)
                     last_message = message
                     timestamp = int(time.time())
             else:
@@ -154,9 +155,15 @@ def main() -> None:
         except (
             HTTPConnectionError, IncorrectResponseCode,
             HTTPResponseParsingError, TypeError, KeyError,
-            ValueError, SendTelegramMessageError
+            ValueError
         ) as error:
             message = f'Сбой в работе программы: {error}'
+            logger.exception(error)
+            if message != last_message:
+                send_message(bot, message)
+            last_message = message
+        except Exception as error:
+            message = f'Упс, непредвиденная ошибка: {error}.'
             logger.exception(error)
             if message != last_message:
                 send_message(bot, message)
