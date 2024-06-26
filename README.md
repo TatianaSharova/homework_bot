@@ -1,5 +1,6 @@
 # Homework bot
 [![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://core.telegram.org/)
+![Python](https://a11ybadges.com/badge?logo=python)
 
 Телеграм бот, который работает в качестве нотифаера: когда меняется статус проверки домашки от яндексПрактикума, приходит уведомление с новым статусом работы. В боте подключено логгирование, а в случае ошибки бот присылает сообщение с текстом ошибки.
 
